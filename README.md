@@ -18,8 +18,8 @@ These notes cover:
 
 ## 📄 View the Notes
 
-- [circom_notes.pdf](./circom_notes.pdf) – Compiled PDF version  
-- [circom_notes.tex](./circom_notes.tex) – LaTeX source code
+- [Circom Language Tutorial Notes.pdf](./Circom%20Language%20Tutorial%20Notes.pdf) – Compiled PDF version  
+- [Circom Language Tutorial Notes.tex](./Circom%20Language%20Tutorial%20Notes.tex) – LaTeX source code
 
 ---
 
