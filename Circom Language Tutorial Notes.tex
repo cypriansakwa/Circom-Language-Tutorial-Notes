@@ -1,0 +1,1127 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{tcolorbox}
+\usepackage{hyperref}
+\usepackage{parskip}
+\DeclareUnicodeCharacter{2502}{\textbar}
+\usepackage[utf8]{inputenc} % For PDFLaTeX
+
+% Define tcolorbox styles
+\tcbset{colback=gray!10, colframe=black, boxrule=0.5pt, arc=3pt, left=6pt, right=6pt, top=6pt, bottom=6pt}
+
+\newtcolorbox{noteBox}{title=Note}
+\newtcolorbox{warnBox}{title=Warning, colback=red!5, colframe=red!75!black}
+
+\title{Circom Language Tutorial Notes}
+\author{Dr. Cyprian Omukhwaya Sakwa}
+\date{}
+
+\begin{document}
+	
+	\maketitle
+	
+	\section{Introduction}
+	
+	\texttt{Circom} is a domain-specific language for creating arithmetic circuits used in zero-knowledge proofs, particularly for generating \textbf{Rank-1 Constraint Systems (R1CS)}. Although it is considered low-level, its explicit constraint structure makes it ideal for learning the foundations of zk-SNARKs and reasoning about circuit behavior.
+	
+	\begin{noteBox}
+		\textbf{Version Note:} This guide assumes usage of \texttt{Circom 2.1+}, which includes improvements in syntax, component usage, and modular templates.
+	\end{noteBox}
+	
+	This guide synthesizes official and community resources on \texttt{Circom} and zk-SNARK tooling, curated and clarified by Dr. Cyprian Omukhwaya Sakwa. It walks through core concepts, syntax, tooling, and practical examples.
+	\section*{Disclaimer}
+	
+	This document is under active development. It may contain incomplete sections, updates in progress, or content subject to revision. Please check back regularly for the latest version.
+	
+	\subsection{When to Use Circom}
+	
+	\texttt{Circom} is particularly suitable in the following scenarios, where low-level circuit design offers unique advantages:
+	
+	\begin{itemize}
+		\item \textbf{Learning how ZK circuits work under the hood:} \\
+		Because \texttt{Circom} exposes constraint-level operations (such as individual multiplications and signal assignments), it serves as an excellent tool for understanding how arithmetic circuits are compiled into R1CS. It helps demystify how high-level operations decompose into low-level constraints that underpin SNARKs.
+		
+		\item \textbf{Prototyping small ZK modules:} \\
+		\texttt{Circom} is ideal for writing small, self-contained gadgets (like comparators, hash preimages, or simple commitments). These gadgets can then be composed into larger systems or used for testing cryptographic primitives in isolation.
+		
+		\item \textbf{Gaining precise control over constraint generation:} \\
+		Unlike higher-level languages that abstract away circuit logic, \texttt{Circom} allows the developer to explicitly manage each signal and constraint. This level of control is useful for optimizing performance or verifying the exact structure of the underlying R1CS, especially for custom or non-standard primitives.
+	\end{itemize}
+	
+	\begin{noteBox}
+		\texttt{Circom} is a low-level circuit language that offers developers fine-grained control over constraint generation. This means that, much like programming in C gives you more control than a high-level language like Python, Circom allows you to work directly with the wires (signals) and constraints of your zero-knowledge circuit.
+	\end{noteBox}
+	
+	\noindent For example, to enforce the multiplication constraint $z = x \cdot y$, you would write in Circom:
+	
+	\begin{verbatim}
+		signal input x;
+		signal input y;
+		signal output z;
+		
+		z <== x * y;
+	\end{verbatim}
+	
+	\noindent This explicitly instructs the constraint system to create a multiplication gate. In contrast, a high-level ZK language like Noir might let you write:
+	
+	\begin{verbatim}
+		fn main(x: Field, y: Field) -> Field {
+			return x * y;
+		}
+	\end{verbatim}
+	
+	\noindent and automatically handle the underlying constraint generation. This fine-grained control in Circom is powerful for optimization and learning, but requires careful attention to correctness.
+	
+	\vspace{1em}
+	
+	\begin{warnBox}
+		\textbf{Note on Production Use:}
+		
+		While \texttt{Circom} is powerful and flexible, it is not always the best tool for large-scale production systems:
+		\begin{itemize}
+			\item \textbf{Always get a professional audit:} \\
+			ZK circuits can contain subtle bugs that are hard to detect. Circuits written in \texttt{Circom}, due to their low-level nature, are especially susceptible to human error. A cryptographic audit is essential for any code handling real assets or sensitive logic.
+			
+			\item \textbf{Consider ergonomic, high-level ZK languages for complex projects:} \\
+			Languages like \texttt{Noir}, \texttt{Leo}, or DSLs based on \texttt{Halo2} provide improved syntax, modularity, and safety features. These may be better suited for large applications, team collaboration, and long-term maintenance.
+		\end{itemize}
+	\end{warnBox}
+	
+	\noindent In short, \texttt{Circom} is a fantastic tool for understanding, teaching, and prototyping—but caution and tooling maturity must be considered before deploying it at scale.
+\section{Installing Dependencies}
+
+To run \texttt{Circom} and its associated tooling, you will need several dependencies installed on your system. These include the \texttt{Circom} compiler itself (written in Rust), and Node.js tooling that supports witness generation and further ZKP integrations.
+\subsection{Core Requirements}
+
+\begin{itemize}
+	\item \textbf{Rust Toolchain:} \texttt{Circom} is implemented in Rust, so the first step is to install the Rust toolchain via \texttt{rustup}.
+	\item \textbf{Node.js and Package Manager:} Several utilities are published as \texttt{npm} packages. Make sure Node.js (version 10 or higher) is available, along with either \texttt{npm} or \texttt{yarn}.
+\end{itemize}
+
+
+\subsection{Installing Rust}
+
+The \texttt{circom} compiler is written in Rust. To install Rust, you can use the recommended toolchain manager \texttt{rustup}. If you're on Linux or macOS, open a terminal and run:
+
+\begin{verbatim}
+	curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh
+\end{verbatim}
+
+Follow the prompts to complete the installation. This will install the \texttt{rustc}, \texttt{cargo} package manager, and other Rust tooling into your system.
+\begin{noteBox}
+	\textbf{Tip:} After installation, restart your terminal or run \texttt{source \$HOME/.cargo/env} to ensure Rust binaries are in your PATH.
+\end{noteBox}
+
+\subsection{Installing Node.js and npm}
+
+Circom tooling includes a number of npm packages, so you should also install:
+
+\begin{itemize}
+	\item \texttt{node.js} (version 10 or higher is recommended)
+	\item A package manager such as \texttt{npm} or \texttt{yarn}
+\end{itemize}
+
+Recent versions of Node.js support WebAssembly and big integer arithmetic, both of which improve the performance of Circom-related tools.
+
+\subsection{Cloning and Compiling Circom}
+
+To install \texttt{Circom} from source:
+
+\begin{enumerate}
+	\item Clone the repository:
+	\begin{verbatim}
+		git clone https://github.com/iden3/circom.git
+	\end{verbatim}
+	
+	\item Enter the directory:
+	\begin{verbatim}
+		cd circom
+	\end{verbatim}
+	
+	\item Compile the project in release mode:
+	\begin{verbatim}
+		cargo build --release
+	\end{verbatim}
+	
+	This step may take a few minutes. Once complete, it will produce a binary at \texttt{target/release/circom}.
+	
+	\item Optionally, install the binary globally so you can invoke \texttt{circom} from anywhere:
+	\begin{verbatim}
+		cargo install --path circom
+	\end{verbatim}
+\end{enumerate}
+
+This command installs the binary into \texttt{\$HOME/.cargo/bin}. To make sure this directory is in your system's PATH (so that you can invoke \texttt{circom} globally), add the following line to your shell configuration file (e.g., \texttt{.bashrc}, \texttt{.zshrc}):
+
+\begin{verbatim}
+	export PATH="$HOME/.cargo/bin:$PATH"
+\end{verbatim}
+
+Then, reload your shell configuration:
+
+\begin{verbatim}
+	source ~/.bashrc  # or source ~/.zshrc
+\end{verbatim}
+
+Now you should be able to verify the installation by running:
+
+\begin{verbatim}
+	circom --help
+\end{verbatim}
+
+\subsection{Circom Help Output}
+
+Running the help command will display all available options for the Circom compiler:
+
+\begin{verbatim}
+	circom compiler 2.2.2
+	IDEN3
+	Compiler for the circom programming language
+	
+	USAGE:
+	circom [FLAGS] [OPTIONS] [--] [input]
+	
+	FLAGS:
+	--r1cs                                 Outputs the constraints in r1cs format
+	--sym                                  Outputs witness in sym format
+	--wasm                                 Compiles the circuit to wasm
+	--json                                 Outputs the constraints in json format
+	--wat                                  Compiles the circuit to wat
+	-c, --c                                    Compiles the circuit to C++
+	--O0                                   No simplification is applied
+	--O1                                   Signal and constant simplification (default)
+	--O2                                   Full constraint simplification
+	--verbose                              Shows logs during compilation
+	--inspect                              Additional validation over constraints
+	--constraint_assert_dissabled          Disable assert checks for "===" constraints
+	--use_old_simplification_heuristics    Use old heuristic simplifications
+	--simplification_substitution          Outputs simplification substitutions in JSON
+	--no_asm                               Avoids ASM files in witness generation
+	--no_init                              Skips zero-initializations in witness code
+	-h, --help                                 Prints help information
+	-V, --version                              Prints version information
+	
+	OPTIONS:
+	-o, --output <output>                    Output directory [default: .]
+	-p, --prime <prime>                     Prime field: bn128, bls12377, bls12381, goldilocks,
+	                                        grumpkin, pallas,
+	secq256r1, vesta [default: bn128]
+	-l <link_libraries>...                   Additional library paths
+	--O2round <simplification_rounds>    Number of simplification passes
+	
+	ARGS:
+	<input>    Path to a circuit with a main component [default: ./circuit.circom]
+\end{verbatim}
+
+	
+	\subsection{Install snarkjs}
+	
+	\texttt{snarkjs} is a command-line utility and JavaScript library that facilitates working with zero-knowledge proofs. It consumes the constraint and witness artifacts generated by \texttt{Circom}, and allows you to perform tasks such as trusted setup ceremonies, proof generation, and verification.
+	
+	\subsubsection*{Install via \texttt{npm}}
+	
+	To install \texttt{snarkjs} globally using \texttt{npm}, run the following command:
+	
+		\begin{lstlisting}
+		npm install -g snarkjs@latest
+	\end{lstlisting}
+	
+	This will make the \texttt{snarkjs} CLI available globally from your terminal.
+	
+	\begin{noteBox}
+		\textbf{Note:} Make sure \texttt{node} and \texttt{npm} are properly installed before running this command. You can verify the installation with:
+		\begin{verbatim}
+			node -v
+			npm -v
+		\end{verbatim}
+	\end{noteBox}
+	
+	After installation, you can check that everything is working by running:
+	
+	\begin{verbatim}
+		snarkjs --help
+	\end{verbatim}
+	
+	This will display a list of available subcommands such as \texttt{groth16 setup}, \texttt{plonk prove}, \texttt{verify}, and \texttt{zkey contribute}, which you’ll use in later stages of the zk-SNARK workflow.
+	
+	You can now start writing and compiling Circom circuits from anywhere on your system.
+	
+\section{Hello World: Your First ZK Circuit}
+
+The ``Hello World'' of zero-knowledge circuits is a simple multiplication. We start by writing a basic Circom circuit that multiplies two inputs:
+
+\begin{lstlisting}[language=Python,caption={multiply.circom}]
+	pragma circom 2.1.6;
+	
+	template Multiply() {
+		signal input a;
+		signal input b;
+		signal output out;
+		
+		out <== a * b;
+	}
+	
+	component main = Multiply();
+\end{lstlisting}
+
+\textbf{Explanation:}
+\begin{itemize}
+	\item \texttt{signal input a, b}: Declares the inputs to the circuit.
+	\item \texttt{signal output out}: Declares the output.
+	\item \texttt{out <== a * b}: Enforces the constraint that \texttt{out} is the product of \texttt{a} and \texttt{b}.
+	\item \texttt{component main = Multiply()}: Sets this component as the entry point (main circuit).
+\end{itemize}
+The arithmetic circuits built using \texttt{circom} operate on \textit{signals}. First, the \texttt{pragma} instruction is used to specify the compiler version. This ensures that the circuit is compatible with the version indicated after the \texttt{pragma} statement; otherwise, the compiler will issue a warning. Next, we use the reserved keyword \texttt{template} to define the structure of a new circuit, which we call \texttt{Multiply}. Inside this template, we declare its \texttt{signals}, which represent the inputs and outputs of the circuit.
+
+
+The shorthand operator \texttt{==>} can be used instead of \texttt{<==}:
+\[
+a \cdot b \Rightarrow \texttt{out}
+\]
+
+In every template, we first declare the \textit{signals}, followed by the specification of the \textit{constraints}.
+
+\subsection{Save \& Compile the Circuit}
+Save the above code as 
+\begin{lstlisting}[language=bash]
+multiply.circom
+\end{lstlisting}To compile the circuit and ensure it is syntactically valid, run:
+
+\begin{lstlisting}[language=bash]
+	circom multiply.circom
+\end{lstlisting}
+Expected output:
+\begin{verbatim}
+	template instances: 1
+	Everything went okay
+\end{verbatim}
+
+\subsection{Generate R1CS and Symbol Files}
+Use the following command to generate the constraint system and symbolic names from the circuit:
+
+\begin{lstlisting}[language=bash]
+	circom multiply.circom --r1cs --sym
+\end{lstlisting}
+
+
+This produces two files:
+\begin{itemize}
+	\item \texttt{multiply.r1cs}: The constraint system in binary form.
+	\item \texttt{multiply.sym}: Symbolic names for debugging and interpretation.
+\end{itemize}
+
+\subsection{Inspecting the R1CS}
+To examine the actual constraints encoded in the R1CS, use \texttt{snarkjs}:
+
+\begin{lstlisting}[language=bash]
+	snarkjs r1cs print multiply.r1cs
+\end{lstlisting}
+	
+Typical output:
+\begin{verbatim}
+	[ 2188824287...main.a ] * [ main.b ] - [ 2188824287...main.out ] = 0
+\end{verbatim}
+
+\textbf{Note:} The large number shown is the prime modulus \( p \) of the BN254 scalar field:
+
+\[
+p = 21888242871839275222246405745257275088548364400416034343698204186575808495617
+\]
+
+This number is used to perform all arithmetic modulo \( p \). Here, the value:
+\[
+21888242871839275222246405745257275088548364400416034343698204186575808495616 \equiv -1 \mod p
+\]
+
+So the R1CS constraint:
+\[
+-1 \cdot a \cdot b - (-1 \cdot \text{out}) = 0
+\]
+is algebraically equivalent to:
+\[
+a \cdot b = \text{out}
+\]
+
+This example demonstrates the basic structure of a Circom circuit, the process to compile it, and how to interpret the generated R1CS constraints. It serves as a foundation for building more complex zero-knowledge proofs.
+	
+\section{Non-Quadratic Constraints in Circom}
+
+\subsection{Quadratic Constraint Limitation in R1CS}
+
+Circom circuits must compile down to a valid \textbf{Rank-1 Constraint System (R1CS)}, where each constraint (i.e., each row of the system) is allowed to have only \textbf{one multiplication}. This is known as the \textbf{quadratic constraint} requirement.
+
+Any constraint with more than one multiplication is invalid and will not compile.
+
+Consider the following incorrect example:
+\UseRawInputEncoding
+
+\begin{lstlisting}[language=Python,caption={Invalid: More than one multiplication in one constraint}]
+	pragma circom 2.1.6;
+	
+	template Multiply() {
+		signal input a;
+		signal input b;
+		signal input c;
+		signal output out;
+		
+		out <== a * b * c; // ❌ Invalid
+	}
+	
+	component main = Multiply();
+\end{lstlisting}
+
+Running:
+\begin{lstlisting}[language=bash]
+	circom multiply.circom
+\end{lstlisting}
+produces the following error:
+
+\begin{verbatim}
+	error[T3001]: Non quadratic constraints are not allowed!
+	┌─ "multiply.circom":9:3
+	│
+	9 │   out <== a * b * c;
+	│   ^^^^^^^^^^^^^^^^^ found here
+	│
+	= call trace:
+	->Multiply
+	
+	previous errors were found
+\end{verbatim}
+
+\textbf{Explanation:}  
+The \texttt{<==} operator in Circom defines a constraint, and this one tries to perform two multiplications (\(a \cdot b \cdot c\)) in a single constraint, which is not allowed.
+
+\subsection*{Fix: Splitting the Constraint}
+
+To resolve this, we break the computation into multiple constraints, each with only one multiplication.
+
+We introduce an intermediate signal \texttt{s1} to hold the result of the first multiplication:
+
+\begin{lstlisting}[language=Python,caption={Valid: One multiplication per constraint}]
+	pragma circom 2.1.6;
+	
+	template Multiply() {
+		signal input a;
+		signal input b;
+		signal input c;
+		signal s1;
+		signal output out;
+		
+		s1 <== a * b;     // First constraint
+		out <== s1 * c;   // Second constraint
+	}
+	
+	component main = Multiply();
+\end{lstlisting}
+
+\subsection*{Inspecting the Fixed R1CS}
+
+After regenerating the R1CS using:
+
+\begin{lstlisting}[language=bash]
+	circom multiply.circom --r1cs --sym
+	snarkjs r1cs print multiply.r1cs
+\end{lstlisting}
+
+We may observe output like:
+
+\begin{verbatim}
+	[INFO]  snarkJS: [ 2188824287...main.a ] * [ main.b ] - [ 2188824287...main.s1 ] = 0
+	
+	[INFO]  snarkJS: [ 2188824287...main.s1 ] * [ main.c ] - [ 2188824287...main.out ] = 0
+\end{verbatim}
+
+This translates algebraically to:
+\begin{align*}
+	a \cdot b  = &s_1\\
+s1 \cdot c = &\text{out}
+\end{align*}  
+This structure enforces that each R1CS row (i.e., each constraint) performs exactly one multiplication, satisfying the requirements of the system and making the circuit valid.
+
+\section{Computing the Witness}
+
+After writing and compiling your circuit, the next step is to compute the \textbf{witness}. The witness contains all intermediate and output values computed by the circuit given a specific input.
+
+\subsection*{Generating the Witness Code}
+
+To generate the necessary files for witness generation, run the following terminal command:
+
+\begin{verbatim}
+	circom multiply.circom --r1cs --sym --wasm
+\end{verbatim}
+
+This command:
+\begin{itemize}
+	\item Regenerates the \texttt{.r1cs} (Rank-1 Constraint System) file.
+	\item Regenerates the \texttt{.sym} (symbol mapping) file.
+	\item Creates a directory called \texttt{multiply\_js/} containing a compiled WebAssembly file and JavaScript code to generate the witness.
+\end{itemize}
+
+\subsection*{Preparing Input}
+
+Navigate to the generated folder:
+
+\begin{verbatim}
+	cd multiply_js/
+\end{verbatim}
+Inside this directory, create an \texttt{input.json} file. This file maps the \textbf{input signals} (those declared with \texttt{signal input}) to their actual values. Here's an example:
+
+
+\begin{verbatim}
+	{
+		"a": "3",
+		"b": "5",
+		"c": "7"
+	}
+\end{verbatim}
+
+Note:
+\begin{itemize}
+	\item Only the input signals \texttt{a}, \texttt{b}, and \texttt{c} need to be specified.
+	\item Internal signals like \texttt{s1} and \texttt{out} are computed automatically.
+	\item The presence of the \texttt{.sym} file allows Circom to match names in \texttt{input.json} to the correct signal IDs.
+\end{itemize}
+
+\subsection*{Generating the Witness}
+
+Once the input file is ready, generate the witness with:
+
+\begin{verbatim}
+	node generate_witness.js multiply.wasm input.json 
+	witness.wtns
+\end{verbatim}
+
+To inspect the contents of the witness in human-readable form, export it to JSON:
+
+\begin{verbatim}
+	snarkjs wtns export json witness.wtns
+\end{verbatim}
+
+Then print the file:
+
+\begin{verbatim}
+	cat witness.json
+\end{verbatim}
+
+You should see output similar to:
+
+\begin{verbatim}
+	[
+	"1",
+	"105",
+	"3",
+	"5",
+	"7",
+	"15"
+	]
+\end{verbatim}
+
+\subsection*{Understanding the Output}
+
+The witness is an array of field elements (in string form). Each entry corresponds to a signal in the circuit, following the R1CS variable order:
+
+\begin{center}
+	\texttt{[1, out, a, b, c, s1]}
+\end{center}
+
+In our example:
+\begin{itemize}
+	\item \texttt{a = 3}, \texttt{b = 5}, \texttt{c = 7}
+	\item \texttt{s1 = a * b = 15}
+	\item \texttt{out = s1 * c = 15 * 7 = 105}
+\end{itemize}
+
+Thus, the witness is:
+
+\begin{itemize}
+	\item \texttt{"1"} – a constant for the R1CS system.
+	\item \texttt{"105"} – the final output.
+	\item \texttt{"3", "5", "7"} – the inputs.
+	\item \texttt{"15"} – the intermediate value of \texttt{s1}.
+\end{itemize}
+
+This step proves that the circuit, given the inputs, computes the output and all intermediate values correctly.
+
+\section{Public Inputs in Circom}
+
+\subsection*{Motivation: Nullifier Schemes}
+
+In certain cryptographic protocols, especially those involving zero-knowledge proofs, we may want to make some inputs public. One motivation comes from \textbf{nullifier schemes}, which are commonly used in privacy-preserving systems such as mixers or shielded transactions.
+
+\subsubsection*{What is a Nullifier Scheme?}
+
+A nullifier scheme typically works as follows:
+\begin{itemize}
+	\item Concatenate two secret numbers.
+	\item Hash the result.
+	\item Later, reveal only one of the original numbers (not both).
+\end{itemize}
+
+The idea is to prove knowledge of a preimage (a secret input to the hash) \emph{without revealing which one} it corresponds to. This prevents double-use of the secret while maintaining privacy.
+
+\vspace{0.5em}
+If the hash were based on just one number, revealing it would disclose the exact preimage—and hence which hash it was associated with. On the other hand, revealing nothing at all allows the prover to re-use the same proof multiple times, which is dangerous in scenarios like smart contract withdrawals.
+
+By revealing just one of the two original inputs (say, a nullifier), we achieve a balance:
+\begin{itemize}
+	\item The action can't be repeated (because the nullifier is public).
+	\item We don’t reveal enough to identify the full preimage.
+\end{itemize}
+
+\subsection*{Public Inputs in Circom}
+
+Circom provides a clean way to declare which signals are public. Consider the following circuit:
+
+\begin{verbatim}
+	template SomePublic() {
+		
+		signal input a;
+		signal input b;
+		signal input c;
+		signal v;
+		signal output out;
+		
+		v <== a * b; 
+		out <== c * v;
+	}
+	
+	component main {public [a, c]} = SomePublic();
+\end{verbatim}
+
+\subsubsection*{Explanation}
+
+\begin{itemize}
+	\item Signals \texttt{a}, \texttt{b}, and \texttt{c} are declared as \texttt{input}, meaning they are inputs to the circuit.
+	\item \texttt{v} is an internal signal used for intermediate computation.
+	\item \texttt{out} is the final output.
+\end{itemize}
+
+The key point is:
+\begin{center}
+	\textbf{\texttt{component main \{public [a, c]\} = SomePublic();}}
+\end{center}
+
+This line declares that only \texttt{a} and \texttt{c} are \textbf{public inputs}, while \texttt{b} remains \textbf{private}. When this circuit is used to generate a proof, the verifier will have access to the values of \texttt{a} and \texttt{c}, but not \texttt{b}.
+
+\subsubsection*{Why is this useful?}
+
+In the context of nullifiers:
+\begin{itemize}
+	\item We can set one of the inputs (e.g., the nullifier) as public.
+	\item The rest (e.g., the secret preimage) stays hidden.
+	\item The circuit verifies a computation involving both, without revealing the full picture.
+\end{itemize}
+
+This pattern supports privacy and prevents replay attacks or double-spending in cryptographic applications.
+
+\subsection*{Inspecting the Fixed R1CS}
+
+After regenerating the R1CS using:
+
+\begin{lstlisting}[language=bash]
+	circom multiply.circom --r1cs --sym
+	snarkjs r1cs print SomePublic.r1cs
+\end{lstlisting}
+
+We may observe output like:
+
+\begin{verbatim}
+	[INFO]  snarkJS: [ 2188824287...main.a ] * [ main.b ] - [ 2188824287...main.v ] = 0
+	
+	[INFO]  snarkJS: [ 2188824287...main.c ] * [ main.v ] - [ 2188824287...main.out ] = 0
+\end{verbatim}
+
+This translates algebraically to:
+\begin{align*}
+	a \cdot b  = &v\\
+	c \cdot v = &\text{out}
+\end{align*}  
+This structure enforces that each R1CS row (i.e., each constraint) performs exactly one multiplication, satisfying the requirements of the system and making the circuit valid.
+
+\section{Computing the Witness}
+
+After writing and compiling your circuit, the next step is to compute the \textbf{witness}. The witness contains all intermediate and output values computed by the circuit given a specific input.
+
+\subsection*{Generating the Witness Code}
+
+To generate the necessary files for witness generation, run the following terminal command:
+
+\begin{verbatim}
+	circom multiply.circom --r1cs --sym --wasm
+\end{verbatim}
+
+This command:
+\begin{itemize}
+	\item Regenerates the \texttt{.r1cs} (Rank-1 Constraint System) file.
+	\item Regenerates the \texttt{.sym} (symbol mapping) file.
+	\item Creates a directory called \texttt{multiply\_js/} containing a compiled WebAssembly file and JavaScript code to generate the witness.
+\end{itemize}
+
+\subsection*{Preparing Input}
+
+Navigate to the generated folder:
+
+\begin{verbatim}
+	cd multiply_js/
+\end{verbatim}
+Inside this directory, create an \texttt{input.json} file. This file maps the \textbf{input signals} (those declared with \texttt{signal input}) to their actual values. Here's an example:
+
+
+\begin{verbatim}
+	{
+		"a": "3",
+		"b": "9",
+		"c": "7"
+	}
+\end{verbatim}
+
+Note:
+\begin{itemize}
+	\item Only the input signals \texttt{a}, \texttt{b}, and \texttt{c} need to be specified.
+	\item Internal signals like \texttt{s1} and \texttt{out} are computed automatically.
+	\item The presence of the \texttt{.sym} file allows Circom to match names in \texttt{input.json} to the correct signal IDs.
+\end{itemize}
+
+\subsection*{Generating the Witness}
+
+Once the input file is ready, generate the witness with:
+
+\begin{verbatim}
+	node generate_witness.js SomePublic.wasm input.json witness.wtns
+\end{verbatim}
+
+To inspect the contents of the witness in human-readable form, export it to JSON:
+
+\begin{verbatim}
+	snarkjs wtns export json witness.wtns
+\end{verbatim}
+
+Then print the file:
+
+\begin{verbatim}
+	cat witness.json
+\end{verbatim}
+
+You should see output similar to:
+
+\begin{verbatim}
+	[
+	"1",
+	"189",
+	"3",
+	"9",
+	"7",
+	"27"
+	]
+\end{verbatim}
+
+	\section{Proving Circuits Overview}
+	
+	After compiling a circuit and running the witness calculator with appropriate inputs, two important files are generated:
+	\begin{itemize}
+		\item \texttt{.wtns}: contains all the computed signals (witness).
+		\item \texttt{.r1cs}: contains the Rank-1 Constraint System representation of the circuit.
+	\end{itemize}
+	
+	These files are essential for generating and verifying a zk-SNARK proof.
+	
+	\medskip
+	
+	As an example, consider a circuit called \texttt{multiply} that proves knowledge of two factors \(a\) and \(b\) such that:
+	\[
+	z=a \cdot b 
+	\]
+	
+	We will use the \textbf{Groth16} zk-SNARK protocol to construct and verify this proof.
+	
+	\section*{Trusted Setup for Groth16}
+	
+	Groth16 requires a trusted setup with two phases:
+	
+	\begin{itemize}
+		\item \textbf{Powers of Tau (Phase 1)} — circuit-independent.
+		\item \textbf{Phase 2} — circuit-specific.
+	\end{itemize}
+	
+	\subsection*{Powers of Tau (Phase 1)}
+	
+	\begin{tcolorbox}[title=Start the Ceremony]
+		\begin{lstlisting}
+snarkjs powersoftau new bn128 12 pot12_0000.ptau -v
+		\end{lstlisting}
+	\end{tcolorbox}
+	
+	\begin{tcolorbox}[title=Contribute to the Ceremony]
+		\begin{lstlisting}
+snarkjs powersoftau contribute pot12_0000.ptau
+ pot12_0001.ptau --name="Type your Name" -v
+		\end{lstlisting}
+	\end{tcolorbox}
+	
+	This generates \texttt{pot12\_0001.ptau}, which will be used in Phase 2.
+	
+	\subsection*{Phase 2 (Circuit-Specific)}
+	
+	\begin{tcolorbox}[title=Prepare Phase 2 File]
+		\begin{lstlisting}
+snarkjs powersoftau prepare phase2 pot12_0001.ptau
+ pot12_final.ptau -v
+		\end{lstlisting}
+	\end{tcolorbox}
+	
+	\begin{tcolorbox}[title=Generate zkey File]
+		\begin{lstlisting}
+snarkjs groth16 setup multiply.r1cs pot12_final.ptau
+ multiply_0000.zkey
+		\end{lstlisting}
+	\end{tcolorbox}
+	
+	\begin{tcolorbox}[title=Contribute to Phase 2]
+		\begin{lstlisting}
+snarkjs zkey contribute multiply_0000.zkey
+ multiply_0001.zkey --name="1st Contributor Name" -v
+		\end{lstlisting}
+	\end{tcolorbox}
+	
+	\begin{tcolorbox}[title=Export Verification Key]
+		\begin{lstlisting}
+snarkjs zkey export verificationkey multiply_0001.zkey 
+verification_key.json
+		\end{lstlisting}
+	\end{tcolorbox}
+	\section*{Create \texttt{input.json}}
+	
+	In your project folder (\texttt{circom}), create a file named \texttt{input.json} with the following content:
+	
+	\begin{lstlisting}[language=bash,caption={input.json},basicstyle=\ttfamily\small]
+{"a": "17","b": "21"}
+	\end{lstlisting}
+	
+	You may use any numbers you'd like to multiply.
+	
+	\section*{Run the Witness Generator}
+	
+	Run the following command in your terminal (from the \texttt{circom} folder):
+	
+	\begin{lstlisting}[language=bash,basicstyle=\ttfamily\small]
+node multiply_js/multiply_js/generate_witness.js
+ multiply_js/multiply_js/multiply.wasm multiply_js/input.json
+  witness.wtns
+
+	\end{lstlisting}
+	
+	\subsection*{Troubleshooting}
+	
+	If you encounter an error like \texttt{generate\_witness.js doesn't exist}, recompile your \texttt{.circom} file using this command:
+	
+	\begin{lstlisting}[language=bash,basicstyle=\ttfamily\small]
+circom multiply.circom --r1cs --wasm --sym -o multiply_js
+	\end{lstlisting}
+	\section*{Generating a Proof}
+	
+	After computing the witness and completing the trusted setup:
+	
+	\begin{tcolorbox}[title=Generate Proof]
+		\begin{lstlisting}
+snarkjs groth16 prove multiply_0001.zkey witness.wtns 
+proof.json public.json
+		\end{lstlisting}
+	\end{tcolorbox}
+	
+	\begin{itemize}
+		\item \texttt{proof.json} contains the zk-SNARK proof.
+		\item \texttt{public.json} contains the public inputs/outputs.
+	\end{itemize}
+	
+	\section*{Verifying a Proof}
+	
+	\begin{tcolorbox}[title=Verify Proof]
+		\begin{lstlisting}
+snarkjs groth16 verify verification_key.json public.json
+ proof.json
+		\end{lstlisting}
+	\end{tcolorbox}
+	
+	If valid, the tool outputs \texttt{OK}. This confirms:
+	\begin{itemize}
+		\item The proof is valid for the circuit.
+		\item The public inputs/outputs match those in \texttt{public.json}.
+	\end{itemize}
+	The following files are produced during the Groth16 zero-knowledge proof generation process:
+	
+	\begin{center}
+		\begin{tabular}{|p{4cm}|p{8cm}|}
+			\hline
+			\textbf{File} & \textbf{Description} \\
+			\hline
+			\texttt{verification\_key.json} &
+			Exported from the final \texttt{.zkey} file using: \\
+			& \begin{lstlisting}[language=bash]
+snarkjs zkey export verificationkey 
+multiply_0001.zkey verification_key.json
+			\end{lstlisting}
+			Used to verify the proof either off-chain or on-chain. \\
+			\hline
+			\texttt{proof.json} &
+			Contains the actual zero-knowledge proof. Generated with: \\
+			& \begin{lstlisting}[language=bash]
+snarkjs groth16 prove multiply_0001.zkey
+ witness.wtns proof.json public.json
+			\end{lstlisting} \\
+			\hline
+			\texttt{public.json} &
+			Contains public inputs to the circuit (e.g., $a \cdot b$) used in verification. \\
+			\hline
+			\texttt{witness.wtns} &
+			Intermediate binary file containing all intermediate values from the circuit evaluation. Required only during proof generation. \\
+			\hline
+		\end{tabular}
+	\end{center}
+	
+	\section*{Next Steps After Generation}
+	
+	\begin{itemize}
+		\item Use \texttt{verification\_key.json}, \texttt{proof.json}, and \texttt{public.json} to verify the proof locally:
+		\begin{lstlisting}[language=bash]
+snarkjs groth16 verify verification_key.json public.json
+ proof.json
+		\end{lstlisting}
+		
+		\item The verification key can also be used to generate a Solidity verifier contract:
+		\begin{lstlisting}[language=bash]
+snarkjs zkey export solidityverifier multiply_0001.zkey
+ verifier.sol
+		\end{lstlisting}
+		This contract allows the proof to be verified on-chain in Ethereum-compatible environments.
+		
+		\item \texttt{witness.wtns} is not needed after proving is complete; it can be deleted unless debugging or re-running proofs.
+	\end{itemize}
+	
+	\section*{On-Chain Verification (Solidity Verifier)}
+	
+	To verify the proof on Ethereum:
+	
+	\subsection*{Generate Solidity Verifier Contract}
+	
+	\begin{tcolorbox}[title=Export Solidity Verifier]
+		\begin{lstlisting}
+snarkjs zkey export solidityverifier multiplier2_0001.zkey 
+verifier.sol
+		\end{lstlisting}
+	\end{tcolorbox}
+	
+	This creates a file \texttt{verifier.sol} containing two contracts:
+	\begin{itemize}
+		\item \texttt{Pairing}
+		\item \texttt{Verifier} — only this needs to be deployed.
+	\end{itemize}
+	
+	\subsection*{Use Remix for Deployment}
+	
+	You can paste the Solidity code into Remix and deploy the \texttt{Verifier} contract. Use a testnet like \texttt{Sepolia} or \texttt{Goerli}, or the JavaScript VM in Remix.
+	
+	\subsection*{Calling \texttt{verifyProof}}
+	
+	To generate calldata for the \texttt{verifyProof} function:
+	
+	\begin{tcolorbox}[title=Generate Calldata]
+		\begin{lstlisting}
+			snarkjs generatecall
+		\end{lstlisting}
+	\end{tcolorbox}
+	
+	Paste the generated parameters into the Remix interface. The function returns \texttt{TRUE} only if the proof is valid. Changing even a single bit in the parameters causes verification to fail.
+	
+\section{Arrays in Circom}
+
+In this section, we demonstrate how to compute the first \( n \) powers of an input using Circom. Instead of manually defining each intermediate output, Circom allows the use of \textbf{signal arrays} and \textbf{template parameters} to generalize behavior.
+
+\subsection*{Example Code}
+\begin{lstlisting}[language=Python, caption={Computing powers of input using signal arrays}]
+	pragma circom 2.1.6;
+	
+	template Powers(n) {
+		signal input a;
+		signal output powers[n];
+		
+		powers[0] <== a;
+		for (var i = 1; i < n; i++) {
+			powers[i] <== powers[i - 1] * a;
+		}
+	}
+	
+	component main = Powers(6);
+\end{lstlisting}
+
+\subsection*{Explanation and Concepts}
+
+\begin{itemize}
+	\item \textbf{Signal Arrays:} 
+	\begin{itemize}
+		\item The line \lstinline{signal output powers[n];} declares an array of output signals of size \( n \).
+		\item This is more scalable than declaring each output manually.
+	\end{itemize}
+	
+	\item \textbf{Initialization and Loop:}
+	\begin{itemize}
+		\item We initialize the first element as \lstinline{powers[0] <== a;}.
+		\item A \lstinline{for} loop iteratively computes the next powers using previous values: \lstinline{powers[i] <== powers[i - 1] * a;}.
+	\end{itemize}
+	
+	\item \textbf{Template Parameters:}
+	\begin{itemize}
+		\item \lstinline{template Powers(n)} makes the circuit reusable with different sizes.
+		\item The actual size (e.g., \lstinline{Powers(6)}) must be hardcoded when instantiating the component.
+		\item This is because Circom generates a \emph{static} constraint system, which cannot be resized dynamically.
+	\end{itemize}
+	
+	\item \textbf{R1CS Immutability:}
+	\begin{itemize}
+		\item Rank 1 Constraint Systems (R1CS) must have a fixed shape.
+		\item Thus, the parameter \lstinline{n} must be known at compile time and cannot be changed during execution.
+	\end{itemize}
+\end{itemize}
+
+\subsection*{Conclusion}
+
+Arrays in Circom provide a clean and scalable way to model repeated structures like powers, sums, and accumulations. Template parameters make components reusable and flexible while still satisfying the immutability constraints of zero-knowledge proof systems like R1CS.
+\section*{Circom Variables}
+
+To better understand the role of variables in Circom, consider the equivalent version of the \texttt{Powers} component written without a loop:
+
+\begin{lstlisting}[language=python, caption={Unrolled version without variables}]
+	pragma circom 2.1.6;
+	
+	template Powers() {
+		signal input a;
+		signal output powers[6];
+		
+		powers[0] <== a;
+		powers[1] <== powers[0] * a;
+		powers[2] <== powers[1] * a;
+		powers[3] <== powers[2] * a;
+		powers[4] <== powers[3] * a;
+		powers[5] <== powers[4] * a;
+	}
+	
+	component main = Powers();
+\end{lstlisting}
+
+\subsection*{What This Teaches Us}
+
+\begin{itemize}
+	\item Although the circuit is written differently, the resulting \textbf{Rank-1 Constraint System (R1CS)} is identical to the version that uses a \texttt{for} loop with a \texttt{var} variable.
+	\item This emphasizes an important point: 
+	\begin{tcolorbox}[colback=gray!5, colframe=black!50, title=Key Insight]
+		Variables in Circom (e.g., \texttt{var i}) exist only at circuit construction time. They do not translate into constraints.
+	\end{tcolorbox}
+	\item Variables are purely a tool to help describe how the circuit should be constructed. They help automate and abstract the generation of constraints, but do not become part of the circuit's witness or its constraint system.
+\end{itemize}
+
+\subsection*{Why Use Variables?}
+
+\begin{itemize}
+	\item Without variables and loops, circuits quickly become verbose and harder to maintain.
+	\item The looped version is cleaner, more scalable, and easier to parameterize with a template argument like \texttt{n}.
+	\item Variables improve circuit readability without compromising performance or constraint integrity.
+\end{itemize}
+
+\subsection*{Conclusion}
+
+Circom variables help in \textbf{generating constraints}, but they are not themselves part of the circuit. Think of them as \emph{compile-time helpers}, not runtime data.
+
+	\section*{Signals vs Variables}
+	
+	\subsection*{Key Differences}
+	
+	\begin{itemize}
+		\item \textbf{Signals} are \textit{immutable} and correspond directly to entries in the \textbf{witness vector} of the R1CS. Each signal can be seen as a column in the constraint system.
+		\item \textbf{Variables} are only used during circuit construction—they do \textbf{not} appear in the R1CS and exist purely at compile time for convenience.
+	\end{itemize}
+	
+	\begin{tcolorbox}[colback=gray!5, colframe=black!50, title=Why Signals Are Immutable]
+		Signals represent witness entries. Once a value is chosen for the witness, it must remain fixed to maintain a valid proof. Mutating signal values would invalidate the R1CS.
+	\end{tcolorbox}
+	
+	\subsection*{Incorrect Examples (Not Allowed)}
+	
+	\begin{lstlisting}[language=python, caption={Invalid Signal and Variable Assignments}]
+		signal a;
+		a = 2;         // ❌ Invalid: Cannot assign to a signal using '='
+		
+		var v;
+		v <-- a + b;   // ❌ Invalid: Cannot assign to a variable using '<--'
+	\end{lstlisting}
+	
+	\subsection*{Operator Summary}
+	
+	\begin{itemize}
+		\item \texttt{<--} and \texttt{<==} perform assignments for signals.
+		\item \texttt{===} adds a constraint without performing assignment.
+		\item For variables, normal C-style operators apply: \texttt{=}, \texttt{==}, \texttt{!=}, \texttt{++}, \texttt{--}, etc.
+	\end{itemize}
+	
+	\subsection*{\texttt{<==} vs \texttt{===}}
+	
+	\begin{lstlisting}[language=python, caption={Semantically Equivalent Circuits}]
+		pragma circom 2.1.6;
+		
+		template Multiply() {
+			signal input a;
+			signal input b;
+			signal output c;
+			
+			c <-- a * b;
+			c === a * b;
+		}
+		
+		template MultiplySame() {
+			signal input a;
+			signal input b;
+			signal output c;
+			
+			c <== a * b;
+		}
+	\end{lstlisting}
+	
+	\begin{itemize}
+		\item \texttt{<==} both assigns and enforces a constraint.
+		\item \texttt{===} only enforces a constraint, assuming a value has already been assigned using \texttt{<--}.
+	\end{itemize}
+	
+	\subsection*{Constraint-Only Example}
+	
+	Sometimes, the prover is responsible for supplying both input and output values. In such cases, you only need a constraint:
+	
+	\begin{lstlisting}[language=python, caption={Constraint Without Output Signal}]
+		pragma circom 2.1.6;
+		
+		template Multiply() {
+			signal input a;
+			signal input b;
+			signal input c;
+			
+			c === a * b;
+		}
+		
+		component main {public [c]} = Multiply();
+	\end{lstlisting}
+	
+	\textbf{Note:} Circom does not require an \texttt{output} signal; the notion of “output” is syntactic sugar. Internally, everything is part of the witness vector—there is no technical distinction between input and output in the constraint system.
+	\section*{Acknowledgments}
+	
+	I would like to acknowledge the invaluable resources and communities that contributed to the development of these notes on \texttt{circom}:
+	
+	\begin{itemize}
+		\item The official \href{https://docs.circom.io}{\texttt{circom} documentation} for providing comprehensive and authoritative references.
+		\item The \href{https://github.com/iden3/snarkjs}{\texttt{snarkjs} repository} for tools and examples that complement \texttt{circom} circuits.
+		\item Tutorials and learning materials from \href{https://iden3.io/}{\texttt{iden3}}, the creators of \texttt{circom}, for guiding best practices in zero-knowledge circuit design.
+		\item The broader zero-knowledge proof community, whose discussions and open-source contributions continue to inspire and refine practical implementations of zk-SNARKs.
+	\end{itemize}
+	
+	Special thanks to my students and colleagues at \texttt{Web3Clubs Foundation Limited} for their curiosity, insights, and collaboration in exploring zk-SNARKs with \texttt{circom}.
+	
+\end{document}
