@@ -28,7 +28,12 @@ These notes cover:
 These notes are under active development and are not yet complete. Sections may be updated, expanded, or revised. Please check back regularly for the latest version.
 
 ---
-
+## Installation
+Clone the repository and navigate to the project directory:
+```sh
+clone git https://github.com/cypriansakwa/Circom-Language-Tutorial-Notes.git
+cd Circom-Language-Tutorial-Notes
+```
 ## 🙏 Acknowledgments
 
 Special thanks to:
